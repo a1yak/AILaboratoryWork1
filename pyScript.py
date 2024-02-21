@@ -60,10 +60,12 @@ df['cluster_label'] = kmeans.labels_
 
 # Search Functionality
 def search_by_federation(federation):
+    # Fill NaN values with an empty string
+    df['Description'].fillna('', inplace=True)
     # Search for documents containing the specified federation
-    matching_documents = df[df['Description'] == federation]
+    matching_documents = df[df['Description'].str.contains(federation, case=False)]
     return matching_documents
 
 # Example usage of search function
-search_results = search_by_federation('support')  # Search for documents containing the federation '365Strong'
+search_results = search_by_federation('support')
 print(search_results)
