@@ -1,5 +1,6 @@
 import pandas as pd
 import nltk
+import PySimpleGUI as sg
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
@@ -33,25 +34,50 @@ def preprocess_text(text):
 
 df['processed_text'] = df['Description'].apply(preprocess_text)
 
-# Calculate TF-IDF
-tfidf_vectorizer = TfidfVectorizer()
-tfidf_matrix = tfidf_vectorizer.fit_transform(df['processed_text'])
+# Define PySimpleGUI layout
+layout = [
+    [sg.Text('Click the button to perform clustering')],
+    [sg.Button('Cluster')],
+    [sg.Multiline('', size=(60, 20), key='-OUTPUT-')]  # Multiline element to display results
+]
 
-# Apply K-means clustering
-kmeans = KMeans(n_clusters=5)  # You can adjust the number of clusters as needed
-kmeans.fit(tfidf_matrix)
+# Create the window
+window = sg.Window('Document Clustering', layout)
 
-# Assign documents to clusters
-document_clusters = kmeans.predict(tfidf_matrix)
+# Event loop
+while True:
+    event, values = window.read()
 
-# Create categories based on clusters
-categories = {f"Category {i+1}": [] for i in range(len(set(document_clusters)))}
+    if event == sg.WIN_CLOSED:
+        break
+    elif event == 'Cluster':
+        # Calculate TF-IDF
+        tfidf_vectorizer = TfidfVectorizer()
+        tfidf_matrix = tfidf_vectorizer.fit_transform(df['processed_text'])
 
-# Assign documents to categories
-for document_idx, cluster_idx in enumerate(document_clusters):
-    categories[f"Category {cluster_idx+1}"].append(document_idx)
+        # Apply K-means clustering
+        kmeans = KMeans(n_clusters=5)  # You can adjust the number of clusters as needed
+        kmeans.fit(tfidf_matrix)
 
-# Print the count of documents in each category along with the list of documents
-for category, document_indices in categories.items():
-    documents = df.loc[document_indices, 'Description'].tolist()
-    print(f"{category} ({len(documents)} documents): {documents}")
+        # Assign documents to clusters
+        document_clusters = kmeans.predict(tfidf_matrix)
+
+        # Create categories based on clusters
+        categories = {f"Category {i+1}": [] for i in range(len(set(document_clusters)))}
+
+        # Assign documents to categories
+        for document_idx, cluster_idx in enumerate(document_clusters):
+            categories[f"Category {cluster_idx+1}"].append(document_idx)
+
+        # Display results in the PySimpleGUI window
+        output_text = ''
+        for category, document_indices in categories.items():
+            output_text += f"{category}\n" + '-'*40 + '\n'
+            documents = df.loc[document_indices, 'Description'].tolist()
+            output_text += '\n'.join(str(doc) if pd.notna(doc) else '' for doc in documents) + '\n\n'
+        window['-OUTPUT-'].update(output_text)
+
+       
+
+# Close the window
+window.close()
