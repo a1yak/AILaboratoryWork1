@@ -38,7 +38,8 @@ df['processed_text'] = df['Description'].apply(preprocess_text)
 layout = [
     [sg.Text('Click the button to perform clustering')],
     [sg.Button('Cluster')],
-    [sg.Multiline('', size=(60, 20), key='-OUTPUT-')]  # Multiline element to display results
+    [sg.Multiline('', size=(60, 20), key='-OUTPUT-')],  # Multiline element to display results
+    [sg.Text('Enter search query:'), sg.InputText(key='-SEARCH-'), sg.Button('Search')]
 ]
 
 # Create the window
@@ -77,7 +78,21 @@ while True:
             output_text += '\n'.join(str(doc) if pd.notna(doc) else '' for doc in documents) + '\n\n'
         window['-OUTPUT-'].update(output_text)
 
-       
+    elif event == 'Search':
+     search_query = values['-SEARCH-']
+    if search_query:
+        # Drop rows with NA / NaN values in the 'Description' column
+        df.dropna(subset=['Description'], inplace=True)
+        
+        # Perform search on non-null 'Description' values
+        search_results = df[df['Description'].str.contains(search_query, case=False)]
+        
+        # Update the output text
+        output_text = ''
+        for idx, row in search_results.iterrows():
+            output_text += f"Search Results for '{search_query}':\n" + '-'*40 + '\n'
+            output_text += row['Description'] + '\n\n'
+        window['-OUTPUT-'].update(output_text)
 
 # Close the window
 window.close()
