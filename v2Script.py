@@ -6,7 +6,13 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
+from sklearn.metrics.pairwise import cosine_similarity
 from collections import Counter
+import ctypes
+
+# Set window size to occupy full screen
+user32 = ctypes.windll.user32
+screen_width, screen_height = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
 
 # Download NLTK resources
 nltk.download('punkt')
@@ -36,14 +42,14 @@ df['processed_text'] = df['Description'].apply(preprocess_text)
 
 # Define PySimpleGUI layout
 layout = [
+    [sg.Text('Enter search query:'), sg.InputText(key='-SEARCH-'), sg.Button('Search')],
     [sg.Text('Click the button to perform clustering')],
     [sg.Button('Cluster')],
-    [sg.Multiline('', size=(60, 20), key='-OUTPUT-')],  # Multiline element to display results
-    [sg.Text('Enter search query:'), sg.InputText(key='-SEARCH-'), sg.Button('Search')]
+    [sg.Multiline('', size=(120, 40), key='-OUTPUT-')]  # Multiline element to display results
 ]
 
 # Create the window
-window = sg.Window('Document Clustering', layout)
+window = sg.Window('Document Clustering', layout, size=(screen_width, screen_height))
 
 # Event loop
 while True:
@@ -70,29 +76,63 @@ while True:
         for document_idx, cluster_idx in enumerate(document_clusters):
             categories[f"Category {cluster_idx+1}"].append(document_idx)
 
+        # Calculate top keywords for each document
+        feature_names = tfidf_vectorizer.get_feature_names_out()
+        category_keywords = {category: set() for category in categories}
+        encountered_keywords = set()
+
+        for category, document_indices in categories.items():
+            # Calculate top keywords for documents in this category
+            top_keywords_counter = Counter()
+            for doc_idx in document_indices:
+                doc = tfidf_matrix[doc_idx]
+                top_indices = doc.indices[doc.data.argsort()[-5:]]  # Get indices of top 5 TF-IDF values
+                top_keywords = [feature_names[idx] for idx in top_indices]
+                top_keywords_counter.update(top_keywords)
+
+            # Assign top keywords to this category, ensuring maximum 5 and uniqueness
+            for keyword, count in top_keywords_counter.items():
+                if count == 1 and len(category_keywords[category]) < 5 and keyword not in encountered_keywords:
+                    category_keywords[category].add(keyword)
+                    encountered_keywords.add(keyword)
+
         # Display results in the PySimpleGUI window
         output_text = ''
-        for category, document_indices in categories.items():
-            output_text += f"{category}\n" + '-'*40 + '\n'
-            documents = df.loc[document_indices, 'Description'].tolist()
-            output_text += '\n'.join(str(doc) if pd.notna(doc) else '' for doc in documents) + '\n\n'
+        for category, keywords in category_keywords.items():
+            output_text += f"{category}: {', '.join(keywords)}\n" + '-'*40 + '\n'
+
+            output_text += "Sample Documents:\n" + '-'*40 + '\n'
+            # Display up to 5 documents for each category
+            for idx, doc_idx in enumerate(categories[category][:5], 1):  # Limit to the first 5 documents
+                document = df.loc[doc_idx, 'Description']
+                if pd.notna(document):
+                    output_text += f"{idx}) {document}\n\n"
+
         window['-OUTPUT-'].update(output_text)
 
     elif event == 'Search':
-     search_query = values['-SEARCH-']
-    if search_query:
-        # Drop rows with NA / NaN values in the 'Description' column
-        df.dropna(subset=['Description'], inplace=True)
-        
-        # Perform search on non-null 'Description' values
-        search_results = df[df['Description'].str.contains(search_query, case=False)]
-        
-        # Update the output text
-        output_text = ''
-        for idx, row in search_results.iterrows():
-            output_text += f"Search Results for '{search_query}':\n" + '-'*40 + '\n'
-            output_text += row['Description'] + '\n\n'
-        window['-OUTPUT-'].update(output_text)
+        search_query = values['-SEARCH-']
+        if search_query:
+            # Preprocess the search query
+            search_query_processed = preprocess_text(search_query)
+
+            # Convert search query to TF-IDF vector
+            search_vector = tfidf_vectorizer.transform([search_query_processed])
+
+            # Calculate cosine similarity between search query and documents
+            similarities = cosine_similarity(search_vector, tfidf_matrix).flatten()
+
+            # Sort documents by similarity
+            sorted_indices = similarities.argsort()[::-1]
+
+            # Display top 5 most similar documents
+            output_text = ''
+            for idx, doc_idx in enumerate(sorted_indices[:5], 1):
+                document = df.loc[doc_idx, 'Description']
+                similarity_score = similarities[doc_idx]
+                if pd.notna(document):
+                    output_text += f"{idx}) {document}\nSimilarity: {similarity_score:.2f}\n\n"
+            window['-OUTPUT-'].update(output_text)
 
 # Close the window
 window.close()
